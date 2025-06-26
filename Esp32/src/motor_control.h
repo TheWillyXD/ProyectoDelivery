@@ -2,103 +2,108 @@
 #define MOTOR_CONTROL_H
 
 #include <Arduino.h>
-#include <ESP32Servo.h>
 
-// Pines para cada driver (LPWM y RPWM)
+// --- DRIVER 1 (HW-039 con PWM)
 #define DRIVER1_LPWM 22
 #define DRIVER1_RPWM 23
-
-#define DRIVER2_LPWM 21
-#define DRIVER2_RPWM 19
-
-#define DRIVER3_LPWM 18
-#define DRIVER3_RPWM 5
-
-// Pines para servomotores de dirección
-#define SERVO1_PIN 17
-#define SERVO2_PIN 16
-
-// Canales PWM para ESP32 (uno por señal PWM)
 #define CH_D1_LPWM 0
 #define CH_D1_RPWM 1
-#define CH_D2_LPWM 2
-#define CH_D2_RPWM 3
-#define CH_D3_LPWM 4
-#define CH_D3_RPWM 5
 
-#define PWM_FREQ 1000
-#define PWM_RES 10
+// --- DRIVER 2 y 3 (L298N SIN PWM)
+#define D2_IN1 21
+#define D2_IN2 19
+#define D2_IN3 4
+#define D2_IN4 15
 
-// Instancias para los dos servos
-Servo servo1;
-Servo servo2;
+#define D3_IN1 18
+#define D3_IN2 5
+#define D3_IN3 14   // CAMBIADO: antes era pin 2 (LED azul), ahora es pin 14
+#define D3_IN4 0
+
+// --- Servos de dirección (PWM)
+#define SERVO1_PIN 17
+#define SERVO2_PIN 16
+#define SERVO1_CH 2
+#define SERVO2_CH 3
+
+// PWM configuración
+#define PWM_FREQ_MOTOR 1000
+#define PWM_RES_MOTOR 10
+#define PWM_FREQ_SERVO 50
+#define PWM_RES_SERVO 16
 
 void iniciarDrivers() {
-  // Driver 1
-  ledcSetup(CH_D1_LPWM, PWM_FREQ, PWM_RES);
+  // Driver 1 (HW-039 con PWM)
+  ledcSetup(CH_D1_LPWM, PWM_FREQ_MOTOR, PWM_RES_MOTOR);
   ledcAttachPin(DRIVER1_LPWM, CH_D1_LPWM);
-  ledcSetup(CH_D1_RPWM, PWM_FREQ, PWM_RES);
+
+  ledcSetup(CH_D1_RPWM, PWM_FREQ_MOTOR, PWM_RES_MOTOR);
   ledcAttachPin(DRIVER1_RPWM, CH_D1_RPWM);
 
-  // Driver 2
-  ledcSetup(CH_D2_LPWM, PWM_FREQ, PWM_RES);
-  ledcAttachPin(DRIVER2_LPWM, CH_D2_LPWM);
-  ledcSetup(CH_D2_RPWM, PWM_FREQ, PWM_RES);
-  ledcAttachPin(DRIVER2_RPWM, CH_D2_RPWM);
+  // L298N
+  pinMode(D2_IN1, OUTPUT); pinMode(D2_IN2, OUTPUT);
+  pinMode(D2_IN3, OUTPUT); pinMode(D2_IN4, OUTPUT);
+  pinMode(D3_IN1, OUTPUT); pinMode(D3_IN2, OUTPUT);
+  pinMode(D3_IN3, OUTPUT); pinMode(D3_IN4, OUTPUT);
 
-  // Driver 3
-  ledcSetup(CH_D3_LPWM, PWM_FREQ, PWM_RES);
-  ledcAttachPin(DRIVER3_LPWM, CH_D3_LPWM);
-  ledcSetup(CH_D3_RPWM, PWM_FREQ, PWM_RES);
-  ledcAttachPin(DRIVER3_RPWM, CH_D3_RPWM);
+  // Servos (PWM sin librería)
+  ledcSetup(SERVO1_CH, PWM_FREQ_SERVO, PWM_RES_SERVO);
+  ledcAttachPin(SERVO1_PIN, SERVO1_CH);
 
-  // Servos
-  servo1.attach(SERVO1_PIN);
-  servo2.attach(SERVO2_PIN);
+  ledcSetup(SERVO2_CH, PWM_FREQ_SERVO, PWM_RES_SERVO);
+  ledcAttachPin(SERVO2_PIN, SERVO2_CH);
 
-  // Inicializa dirección centrada
-  servo1.write(90);
-  servo2.write(90);
-
+  
 }
 
+// -------- DRIVER 1 (HW-039) --------
 void avanzar(int duty) {
-  ledcWrite(CH_D1_LPWM, duty); ledcWrite(CH_D1_RPWM, 0);
-  ledcWrite(CH_D2_LPWM, duty); ledcWrite(CH_D2_RPWM, 0);
-  ledcWrite(CH_D3_LPWM, duty); ledcWrite(CH_D3_RPWM, 0);
+  ledcWrite(CH_D1_LPWM, duty);
+  ledcWrite(CH_D1_RPWM, 0);
+
+  digitalWrite(D2_IN1, HIGH); digitalWrite(D2_IN2, LOW);
+  digitalWrite(D2_IN3, LOW);  digitalWrite(D2_IN4, HIGH);
+  digitalWrite(D3_IN1, HIGH); digitalWrite(D3_IN2, LOW);
+  digitalWrite(D3_IN3, LOW);  digitalWrite(D3_IN4, HIGH);
 }
 
 void retroceder(int duty) {
-  ledcWrite(CH_D1_LPWM, 0); ledcWrite(CH_D1_RPWM, duty);
-  ledcWrite(CH_D2_LPWM, 0); ledcWrite(CH_D2_RPWM, duty);
-  ledcWrite(CH_D3_LPWM, 0); ledcWrite(CH_D3_RPWM, duty);
+  ledcWrite(CH_D1_LPWM, 0);
+  ledcWrite(CH_D1_RPWM, duty);
+
+  digitalWrite(D2_IN1, LOW);  digitalWrite(D2_IN2, HIGH);
+  digitalWrite(D2_IN3, HIGH); digitalWrite(D2_IN4, LOW);
+  digitalWrite(D3_IN1, LOW);  digitalWrite(D3_IN2, HIGH);
+  digitalWrite(D3_IN3, HIGH); digitalWrite(D3_IN4, LOW);
 }
 
 void detener() {
   ledcWrite(CH_D1_LPWM, 0);
   ledcWrite(CH_D1_RPWM, 0);
-  ledcWrite(CH_D2_LPWM, 0);
-  ledcWrite(CH_D2_RPWM, 0);
-  ledcWrite(CH_D3_LPWM, 0);
-  ledcWrite(CH_D3_RPWM, 0);
+
+  digitalWrite(D2_IN1, LOW); digitalWrite(D2_IN2, LOW);
+  digitalWrite(D2_IN3, LOW); digitalWrite(D2_IN4, LOW);
+  digitalWrite(D3_IN1, LOW); digitalWrite(D3_IN2, LOW);
+  digitalWrite(D3_IN3, LOW); digitalWrite(D3_IN4, LOW);
 }
 
-// --------- FUNCIONES PARA SERVOS DE DIRECCIÓN ---------
-
+// -------- SERVOS --------
 void direccionCentro() {
-  servo1.write(90);
-  servo2.write(90);
+  int duty = 65535 * 0.075; // 1.5 ms
+  ledcWrite(SERVO1_CH, duty);
+  ledcWrite(SERVO2_CH, duty);
 }
 
 void girarIzquierdaServos() {
-  servo1.write(60);  // Ajusta según el montaje
-  servo2.write(60);
+  int duty = 65535 * 0.05; // 1.0 ms
+  ledcWrite(SERVO1_CH, duty);
+  ledcWrite(SERVO2_CH, duty);
 }
 
 void girarDerechaServos() {
-  servo1.write(120); // Ajusta según el montaje
-  servo2.write(120);
+  int duty = 65535 * 0.10; // 2.0 ms
+  ledcWrite(SERVO1_CH, duty);
+  ledcWrite(SERVO2_CH, duty);
 }
-
 
 #endif
