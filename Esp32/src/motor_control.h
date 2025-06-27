@@ -32,6 +32,9 @@
 #define PWM_FREQ_SERVO 50
 #define PWM_RES_SERVO 16
 
+#define TRIG_PIN 12
+#define ECHO_PIN 13
+
 void iniciarDrivers() {
   // Driver 1 (HW-039 con PWM)
   ledcSetup(CH_D1_LPWM, PWM_FREQ_MOTOR, PWM_RES_MOTOR);
@@ -46,12 +49,16 @@ void iniciarDrivers() {
   pinMode(D3_IN1, OUTPUT); pinMode(D3_IN2, OUTPUT);
   pinMode(D3_IN3, OUTPUT); pinMode(D3_IN4, OUTPUT);
 
-  // Servos (PWM sin librería)
+  // Servos 
   ledcSetup(SERVO1_CH, PWM_FREQ_SERVO, PWM_RES_SERVO);
   ledcAttachPin(SERVO1_PIN, SERVO1_CH);
 
   ledcSetup(SERVO2_CH, PWM_FREQ_SERVO, PWM_RES_SERVO);
   ledcAttachPin(SERVO2_PIN, SERVO2_CH);
+
+  //ultrasonico
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
 
   
 }
@@ -104,6 +111,19 @@ void girarDerechaServos() {
   int duty = 65535 * 0.10; // 2.0 ms
   ledcWrite(SERVO1_CH, duty);
   ledcWrite(SERVO2_CH, duty);
+}
+
+long leerDistanciaCM() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duracion = pulseIn(ECHO_PIN, HIGH, 30000); // 30ms timeout (~5 metros máx)
+  long distancia = duracion * 0.034 / 2;
+
+  return distancia;
 }
 
 #endif
