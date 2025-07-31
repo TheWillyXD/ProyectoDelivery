@@ -1,0 +1,45 @@
+{
+  "manzana1villaa": [
+    {"accion": "girarIzquierdaServos", "duracion": 1000},
+    {"accion": "avanzar", "duracion": 3000},
+    {"accion": "girarDerechaServos", "duracion": 1500},
+    {"accion": "avanzar", "duracion": 2000},
+    {"accion": "girarDerechaServos", "duracion": 1500}
+  ],
+  "manzana1villab": [
+    {"accion": "avanzar", "duracion": 4000},
+    {"accion": "girarIzquierdaServos", "duracion": 1000},
+    {"accion": "avanzar", "duracion": 1500}
+  ],
+  "manzana1villac": [
+    {"accion": "avanzar", "duracion": 3500}
+  ], 
+   
+  "manzana2villad": [
+    {"accion": "avanzar", "duracion": 2500},
+    {"accion": "girarDerechaServos", "duracion": 1200},
+    {"accion": "avanzar", "duracion": 2000}
+  ],
+  "manzana2villae": [
+    {"accion": "avanzar", "duracion": 3000},
+    {"accion": "girarIzquierdaServos", "duracion": 1500},
+    {"accion": "avanzar", "duracion": 1000}
+  ],
+  "manzana2villaf": [
+    {"accion": "avanzar", "duracion": 2800}
+  ],
+
+  "manzana3villag": [
+    {"accion": "avanzar", "duracion": 3200},
+    {"accion": "girarDerechaServos", "duracion": 1000},
+    {"accion": "avanzar", "duracion": 1800}
+  ],
+  "manzana3villah": [
+    {"accion": "avanzar", "duracion": 3300},
+    {"accion": "girarIzquierdaServos", "duracion": 1200},
+    {"accion": "avanzar", "duracion": 1600}
+  ],
+  "manzana3villai": [
+    {"accion": "avanzar", "duracion": 3600}
+  ]
+}
