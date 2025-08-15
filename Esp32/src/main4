@@ -1,0 +1,245 @@
+#include <WiFi.h>  //pio run --target uploadfs
+#include <PubSubClient.h>
+#include <SPIFFS.h>
+#include <ArduinoJson.h>
+#include "motor_control.h"  // tus funciones: avanzar(), detener(), etc.
+#include <WebServer.h>
+
+#define CONFIG_FILE "/config.json"
+
+// Variables de configuración
+String ssid;
+String password;
+String mqtt_server;
+const char* mqtt_topic = "pedidos/esp32";
+const char* mqtt_topic_confirmacion = "pedidos/confirmacion";
+
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
+WebServer server(80);
+
+String estadoSensor = "";
+
+// ====== Función para guardar configuración en SPIFFS ======
+void saveConfig(const String& ssid, const String& pass, const String& mqtt) {
+  DynamicJsonDocument doc(512);
+  doc["ssid"] = ssid;
+  doc["password"] = pass;
+  doc["mqtt_server"] = mqtt;
+
+  File file = SPIFFS.open(CONFIG_FILE, "w");
+  if (!file) {
+    Serial.println("Error abriendo config.json para escritura");
+    return;
+  }
+  serializeJson(doc, file);
+  file.close();
+  Serial.println("Configuración guardada en SPIFFS");
+}
+
+// ====== Función para cargar configuración ======
+bool loadConfig() {
+  if (!SPIFFS.exists(CONFIG_FILE)) {
+    Serial.println("No existe config.json");
+    return false;
+  }
+
+  File file = SPIFFS.open(CONFIG_FILE, "r");
+  if (!file) {
+    Serial.println("No se pudo abrir config.json");
+    return false;
+  }
+
+  DynamicJsonDocument doc(512);
+  DeserializationError error = deserializeJson(doc, file);
+  file.close();
+
+  if (error) {
+    Serial.println("Error leyendo config.json");
+    return false;
+  }
+
+  ssid = doc["ssid"].as<String>();
+  password = doc["password"].as<String>();
+  mqtt_server = doc["mqtt_server"].as<String>();
+
+  return (ssid.length() > 0 && password.length() > 0 && mqtt_server.length() > 0);
+}
+
+// ====== Modo AP para configuración ======
+void startAPMode() {
+  WiFi.softAP("ESP32_Config", "12345678");
+  Serial.println("📡 Modo AP iniciado");
+  Serial.print("IP AP: "); Serial.println(WiFi.softAPIP());
+
+  server.on("/", HTTP_GET, []() {
+    server.send(200, "text/html",
+      "<form action='/save' method='GET'>"
+      "SSID WiFi: <input type='text' name='ssid'><br>"
+      "Password WiFi: <input type='password' name='pass'><br>"
+      "MQTT Server: <input type='text' name='mqtt'><br>"
+      "<input type='submit' value='Guardar'>"
+      "</form>");
+  });
+
+  server.on("/save", HTTP_GET, []() {
+    String newSSID = server.arg("ssid");
+    String newPASS = server.arg("pass");
+    String newMQTT = server.arg("mqtt");
+
+    if (newSSID.length() > 0 && newPASS.length() > 0 && newMQTT.length() > 0) {
+      saveConfig(newSSID, newPASS, newMQTT);
+      server.send(200, "text/html", " Configuración guardada. Reiniciando...");
+      delay(1000);
+      ESP.restart();
+    } else {
+      server.send(200, "text/html", "Todos los campos son obligatorios");
+    }
+  });
+
+  server.begin();
+}
+
+// ====== Conexión WiFi ======
+bool conectarWiFi() {
+  Serial.print("Conectando a WiFi: ");
+  Serial.println(ssid);
+  WiFi.begin(ssid.c_str(), password.c_str());
+  unsigned long startAttemptTime = millis();
+
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 15000) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  return WiFi.status() == WL_CONNECTED;
+}
+
+// ====== Ejecutar ruta desde JSON ======
+void ejecutarRutaDesdeJSON(const String& nombreRuta) {
+  File file = SPIFFS.open("/rutas.json", "r");
+  if (!file) {
+    Serial.println("No se pudo abrir el archivo JSON");
+    return;
+  }
+
+  StaticJsonDocument<4096> doc;
+  DeserializationError error = deserializeJson(doc, file);
+  file.close();
+
+  if (error) {
+    Serial.print("Error leyendo JSON: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  if (!doc.containsKey(nombreRuta)) {
+    Serial.println("Ruta no encontrada: " + nombreRuta);
+    return;
+  }
+
+  JsonArray pasos = doc[nombreRuta].as<JsonArray>();
+  for (JsonObject paso : pasos) {
+    String accion = paso["accion"].as<String>();
+    int duracion = paso["duracion"];
+
+    Serial.println("Ejecutando: " + accion + " por " + String(duracion) + " ms");
+
+    if (accion == "avanzar") avanzar(1023);
+    else if (accion == "girarDerechaServos") girarDerechaServos();
+    else if (accion == "girarIzquierdaServos") girarIzquierdaServos();
+    else if (accion == "centro") direccionCentro();
+
+    delay(duracion);
+    detener();
+    delay(500);
+  }
+
+  Serial.println("Pedido Finalizado");
+  String mensajeConfirmacion = "pedido finalizado";
+  mqttClient.publish(mqtt_topic_confirmacion, mensajeConfirmacion.c_str());
+  Serial.println("📢 Mensaje enviado a MQTT: " + mensajeConfirmacion);
+}
+
+// ====== Callback MQTT ======
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  Serial.println("\nNuevo pedido recibido");
+
+  String mensaje;
+  for (unsigned int i = 0; i < length; i++) {
+    mensaje += (char)payload[i];
+  }
+
+  Serial.println("Ruta recibida: " + mensaje);
+  ejecutarRutaDesdeJSON(mensaje);
+}
+
+// ====== Conexión MQTT ======
+void conectarMQTT() {
+  mqttClient.setServer(mqtt_server.c_str(), 1883);
+  while (!mqttClient.connected()) {
+    Serial.print("Conectando a MQTT...");
+    if (mqttClient.connect("ESP32RutaCliente")) {
+      Serial.println("-Conectado a broker");
+      mqttClient.subscribe(mqtt_topic);
+    } else {
+      Serial.print("*Error: ");
+      Serial.println(mqttClient.state());
+      delay(2000);
+    }
+  }
+}
+
+// ====== Setup ======
+void setup() {
+  Serial.begin(115200);
+  if (!SPIFFS.begin(true)) {
+    Serial.println("*Fallo al montar SPIFFS");
+    while (true) delay(1000);
+  }
+
+  if (!loadConfig() || !conectarWiFi()) {
+    Serial.println("*No se pudo conectar a WiFi. Iniciando AP...*");
+    startAPMode();
+    return;
+  }
+
+  Serial.println("-Conectado a WiFi-");
+  Serial.print("IP: "); Serial.println(WiFi.localIP());
+
+  iniciarDrivers();
+  direccionCentro();
+
+
+  mqttClient.setCallback(mqttCallback);
+  conectarMQTT();
+}
+
+// ====== Loop ======
+void loop() {
+  if (WiFi.getMode() == WIFI_AP) {
+    server.handleClient();
+  } else {
+    if (!mqttClient.connected()) {
+      conectarMQTT();
+    }
+    mqttClient.loop();
+  }
+  long distancia = leerDistanciaCM();
+
+  static bool yaDetenido = false;
+  long distancia = leerDistanciaCM();
+
+  if (distancia > 0 && distancia < 20 && !yaDetenido) {
+    detener();
+    estadoSensor = "Obstáculo detectado";
+    Serial.println("Obstáculo detectado, deteniendo vehículo.");
+    yaDetenido = true;
+  }
+
+  if (distancia >= 20 && yaDetenido) {
+    estadoSensor = "";
+    yaDetenido = false;
+    Serial.println("Obstrucción despejada.");
+  }
+}
